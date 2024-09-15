@@ -3,6 +3,8 @@ from langgraph.graph import StateGraph, END
 from graph.consts import GENERATE, GRADE_DOCUMENTS, RETRIEVE, WEBSEARCH
 from graph.state import GraphState
 from graph.nodes import retrieve, generate, grade_documents, web_search
+from graph.chains.hallucination_grader import hallucination_grader
+from graph.chains.answer_grader import answer_grader
 
 _ = load_dotenv()
 
@@ -18,6 +20,35 @@ def decide_to_generate(state: GraphState):
     else:
         print("---DECISION: GENERATE---")
         return GENERATE
+
+
+def grade_generation_grounded_in_documents_and_question(state: GraphState) -> str:
+    print("---CHECK HALLUCINATIONS---")
+    print("---CHECK GENERATION VS DOCUMENTS---")
+    question = state["question"]
+    documents = state["documents"]
+    generation = state["generation"]
+
+    hallicination_score = hallucination_grader.invoke(
+        {"documents": documents, "generation": generation}
+    )
+
+    if hallucination_grade := hallicination_score.binary_score:
+        print("---DECISION: GENERATION IS GROUNDED IN DOCUMENTS---")
+        print("---GRADE GENERATION vs QUESTION---")
+
+        answer_score = answer_grader.invoke(
+            {"question": question, "generation": generation}
+        )
+        if answer_grade := answer_score.binary_score:
+            print("---DECISION: GENERATION ADDRESSES QUESTION---")
+            return "useful"
+        else:
+            print("---DECISION: GENERATION DOES NOT ADDRESS QUESTION---")
+            return "not_useful"
+    else:
+        print("---DECISION: GENERATION IS NOT GROUNDED IN DOCUMENTS, RE-TRY---")
+        return "not_supported"
 
 
 workflow: StateGraph = StateGraph(GraphState)
@@ -37,9 +68,18 @@ workflow.add_conditional_edges(
         GENERATE: GENERATE,
     },
 )
+workflow.add_conditional_edges(
+    GENERATE,
+    grade_generation_grounded_in_documents_and_question,
+    path_map={
+        "useful": END,
+        "not_useful": WEBSEARCH,
+        "not_supported": GENERATE,
+    },
+)
 workflow.add_edge(WEBSEARCH, GENERATE)
 workflow.add_edge(GENERATE, END)
 
 app = workflow.compile()
 
-app.get_graph().draw_mermaid_png(output_file_path="graph.png")
+app.get_graph().draw_mermaid_png(output_file_path="self_rag_graph.png")

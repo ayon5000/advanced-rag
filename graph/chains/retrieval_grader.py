@@ -1,10 +1,11 @@
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_openai import ChatOpenAI
+from graph.consts import RETRIEVAL_GRADER_MODEL
 
 llm = ChatOpenAI(
-    model="gpt-4o-mini-2024-07-18",
+    model=RETRIEVAL_GRADER_MODEL,
     temperature=0,
 )
 
